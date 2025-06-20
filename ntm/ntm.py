@@ -63,15 +63,18 @@ class NTM(nn.Module):
     def forward(self, x, prev_state):
         """NTM forward function.
 
-        :param x: input vector (batch_size x num_inputs)
-        :param prev_state: The previous state of the NTM
+        :param x: input vector (batch_size x num_inputs)    x: [B, I] 输入向量
+        :param prev_state: The previous state of the NTM, 包含:
+            prev_reads: List[Tensor[B, M]]，每个读头的输出
+            prev_controller_state: LSTM 的隐状态
+            prev_heads_states: 每个读写头的状态（比如地址权重等）
         """
         # Unpack the previous state
         prev_reads, prev_controller_state, prev_heads_states = prev_state
 
         # Use the controller to get an embeddings
-        inp = torch.cat([x] + prev_reads, dim=1)
-        controller_outp, controller_state = self.controller(inp, prev_controller_state)
+        inp = torch.cat([x] + prev_reads, dim=1) # x.shape: [B, I], prev_reads: 一般是 1 个读头，所以 [B, M]; inp: [B, I + R*M],R=1
+        controller_outp, controller_state = self.controller(inp, prev_controller_state)#         controller = LSTMController(num_inputs + M*num_heads, controller_size, controller_layers) [B, I + M] --> [B, C], C 是 controller_size
 
         # Read/Write from the list of heads
         reads = []

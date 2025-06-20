@@ -1,7 +1,7 @@
 """Copy Task NTM model."""
 import random
 
-from attr import attrs, attrib, Factory
+import attr
 import torch
 from torch import nn
 from torch import optim
@@ -70,33 +70,33 @@ def dataloader(num_batches,
         yield batch_num+1, inp.float(), outp.float()
 
 
-@attrs
+@attr.s
 class RepeatCopyTaskParams(object):
-    name = attrib(default="repeat-copy-task")
-    controller_size = attrib(default=100, convert=int)
-    controller_layers = attrib(default=1, convert=int)
-    num_heads = attrib(default=1, convert=int)
-    sequence_width = attrib(default=8, convert=int)
-    sequence_min_len = attrib(default=1, convert=int)
-    sequence_max_len = attrib(default=10, convert=int)
-    repeat_min = attrib(default=1, convert=int)
-    repeat_max = attrib(default=10, convert=int)
-    memory_n = attrib(default=128, convert=int)
-    memory_m = attrib(default=20, convert=int)
-    num_batches = attrib(default=250000, convert=int)
-    batch_size = attrib(default=1, convert=int)
-    rmsprop_lr = attrib(default=1e-4, convert=float)
-    rmsprop_momentum = attrib(default=0.9, convert=float)
-    rmsprop_alpha = attrib(default=0.95, convert=float)
+    name = attr.attrib(default="repeat-copy-task")
+    controller_size = attr.attrib(default=100, converter=int)
+    controller_layers = attr.attrib(default=1, converter=int)
+    num_heads = attr.attrib(default=1, converter=int)
+    sequence_width = attr.attrib(default=8, converter=int)
+    sequence_min_len = attr.attrib(default=1, converter=int)
+    sequence_max_len = attr.attrib(default=10, converter=int)
+    repeat_min = attr.attrib(default=1, converter=int)
+    repeat_max = attr.attrib(default=10, converter=int)
+    memory_n = attr.attrib(default=128, converter=int)
+    memory_m = attr.attrib(default=20, converter=int)
+    num_batches = attr.attrib(default=250000, converter=int)
+    batch_size = attr.attrib(default=1, converter=int)
+    rmsprop_lr = attr.attrib(default=1e-4, converter=float)
+    rmsprop_momentum = attr.attrib(default=0.9, converter=float)
+    rmsprop_alpha = attr.attrib(default=0.95, converter=float)
 
 
-@attrs
+@attr.s
 class RepeatCopyTaskModelTraining(object):
-    params = attrib(default=Factory(RepeatCopyTaskParams))
-    net = attrib()
-    dataloader = attrib()
-    criterion = attrib()
-    optimizer = attrib()
+    params = attr.attrib(default=attr.Factory(RepeatCopyTaskParams))
+    net = attr.attrib()
+    dataloader = attr.attrib()
+    criterion = attr.attrib()
+    optimizer = attr.attrib()
 
     @net.default
     def default_net(self):
