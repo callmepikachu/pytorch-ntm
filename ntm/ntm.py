@@ -3,6 +3,10 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from ntm.dual_controller import DualMemoryController
+from ntm.long_term_memory import LongTermMemory
+from ntm.memory import NTMMemory
+
 
 class NTM(nn.Module):
     """A Neural Turing Machine."""
@@ -95,3 +99,136 @@ class NTM(nn.Module):
         state = (reads, controller_state, heads_states)
 
         return o, state
+
+
+class DualMemoryNTM(nn.Module):
+    def __init__(self, input_size, output_size, controller_size,
+                 short_term_memory, long_term_memory):
+        """
+        Args:
+            input_size: int - 输入维度
+            output_size: int - 输出维度
+            controller_size: int - 控制器隐藏层大小
+            short_term_memory: tuple(N, M) - 短期记忆矩阵大小
+            long_term_memory: tuple(num_nodes, node_dim) - 长期记忆图结构大小
+        """
+        super(DualMemoryNTM, self).__init__()
+        self.input_size = input_size
+        self.output_size = output_size
+        self.controller_size = controller_size
+
+        # 初始化两个 memory 模块
+        st_n, st_m = short_term_memory
+        lt_nodes, lt_dim = long_term_memory
+
+        self.short_term = NTMMemory(st_n, st_m)
+        self.long_term = LongTermMemory(lt_nodes, lt_dim)
+
+        # 初始化控制器
+        self.controller = DualMemoryController(
+            input_size=input_size,
+            hidden_size=controller_size,
+            output_size=output_size,
+            memory_size=st_n,
+            memory_dim=st_m,
+            long_term_nodes=lt_nodes,
+            long_term_dim=lt_dim
+        )
+
+        # Track previous long-term write weights
+        self._prev_w_lt = None
+
+    def forward(self, input_seq):
+        """
+        前向传播
+
+        Args:
+            input_seq: 输入序列
+                - 如果是3D tensor: [seq_len, batch_size, input_size]
+                - 如果是2D tensor: [batch_size, input_size] (单个时间步)
+                - 如果是1D tensor: [input_size] (单个样本，单个时间步)
+
+        Returns:
+            outputs: 输出序列 [seq_len, batch_size, output_size]
+        """
+        # Handle different input dimensions
+        if input_seq.dim() == 1:
+            # Single sample, single timestep: [input_size] -> [1, 1, input_size]
+            input_seq = input_seq.unsqueeze(0).unsqueeze(0)
+            batch_size = 1
+            seq_len = 1
+        elif input_seq.dim() == 2:
+            # Single timestep: [batch_size, input_size] -> [1, batch_size, input_size]
+            input_seq = input_seq.unsqueeze(0)
+            batch_size = input_seq.size(1)
+            seq_len = 1
+        else:
+            # Full sequence: [seq_len, batch_size, input_size]
+            seq_len, batch_size, _ = input_seq.shape
+
+        # 确保控制器状态被正确初始化
+        if self.controller.hidden is None or self.controller.hidden.size(0) != batch_size:
+            self.controller.reset(batch_size)
+
+        outputs = []
+
+        # Process each timestep
+        for t in range(seq_len):
+            x = input_seq[t]  # [batch_size, input_size]
+
+            # Generate keys for memory addressing
+            key_st = self.controller.generate_key_st(x)
+            key_lt = self.controller.generate_key_lt(x)
+
+            # Short-term memory read using content addressing
+            memory_reshaped = self.short_term.memory  # [batch_size, N, M]
+            key_expanded = key_st.unsqueeze(1)  # [batch_size, 1, M]
+
+            # Compute cosine similarity
+            similarity = torch.cosine_similarity(key_expanded, memory_reshaped, dim=2)  # [batch_size, N]
+            w_st_read = torch.softmax(similarity, dim=1)  # [batch_size, N]
+
+            # Read from short-term memory
+            short_term_read = self.short_term.read(w_st_read)
+
+            # 长期记忆读取
+            ltm_normal, ltm_forward, ltm_backward = self.long_term.read(key_lt)
+
+            # 控制器前馈
+            output = self.controller(x, short_term_read, ltm_normal, ltm_forward, ltm_backward)
+            outputs.append(output)
+
+            # 写入操作
+            w_st = self.controller.generate_write_weights_st()
+            e_st = self.controller.generate_erase_st()
+            a_st = self.controller.generate_add_st()
+            self.short_term.write(w_st, e_st, a_st)
+
+            # Write to long-term memory
+            w_lt = self.controller.generate_write_weights_lt()
+            e_lt = self.controller.generate_erase_lt()
+            a_lt = self.controller.generate_add_lt()
+
+            # Use previous weights for long-term memory update
+            if self._prev_w_lt is not None:
+                self.long_term.write(w_lt, self._prev_w_lt, e_lt, a_lt)
+            else:
+                # First timestep: use zeros as previous weights
+                prev_w_lt = torch.zeros_like(w_lt)
+                self.long_term.write(w_lt, prev_w_lt, e_lt, a_lt)
+
+            self._prev_w_lt = w_lt.detach()
+
+        # Stack outputs: [seq_len, batch_size, output_size]
+        return torch.stack(outputs)
+
+    def init_sequence(self, batch_size):
+        """初始化短期和长期记忆"""
+        self.short_term.reset(batch_size)
+        self.long_term.reset(batch_size)
+        self._prev_w_lt = None
+        self.controller.reset(batch_size)
+
+    def calculate_num_params(self):
+        """计算总参数数量"""
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)

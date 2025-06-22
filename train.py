@@ -15,18 +15,26 @@ import argcomplete
 import torch
 import numpy as np
 
+from ntm.ntm import DualMemoryNTM
+from tasks.DualCopyTask import DualCopyTaskParams
 
 LOGGER = logging.getLogger(__name__)
 
 
 from tasks.copytask import CopyTaskModelTraining, CopyTaskParams
 from tasks.repeatcopytask import RepeatCopyTaskModelTraining, RepeatCopyTaskParams
+from tasks.DualCopyTask import DualCopyTaskModelTraining, DualCopyTaskParams
+
+LOGGER = logging.getLogger(__name__)
 
 TASKS = {
     'copy': (CopyTaskModelTraining, CopyTaskParams),
     'repeat-copy': (RepeatCopyTaskModelTraining, RepeatCopyTaskParams)
 }
 
+DUAL_TASKS = {
+    'copy': (DualCopyTaskModelTraining, DualCopyTaskParams),
+}
 
 # Default values for program arguments
 RANDOM_SEED = 1000
@@ -213,6 +221,9 @@ def init_arguments():
                         help="Path for saving checkpoint data (default: './')")
     parser.add_argument('--report-interval', type=int, default=REPORT_INTERVAL,
                         help="Reporting interval")
+    # 修改 parser.add_argument 部分：
+    parser.add_argument('--model_type', choices=['ntm', 'dual'], default='ntm',
+                        help="Choose model type: ntm or dual-memory")
 
     argcomplete.autocomplete(parser)
 
@@ -247,7 +258,15 @@ def update_model_params(params, update):
 def init_model(args):
     LOGGER.info("Training for the **%s** task", args.task)
 
-    model_cls, params_cls = TASKS[args.task]
+    if args.model_type == 'ntm':
+        model_cls, params_cls = TASKS[args.task]
+    elif args.model_type == 'dual':
+        model_cls, params_cls = DUAL_TASKS.get(args.task, (None, None))
+        if model_cls is None:
+            raise ValueError(f"Task {args.task} not supported with dual memory model.")
+    else:
+        raise ValueError(f"Unknown model_type: {args.model_type}")
+
     params = params_cls()
     params = update_model_params(params, args.param)
 
