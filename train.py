@@ -217,8 +217,8 @@ def init_arguments():
     parser.add_argument('--checkpoint-interval', type=int, default=CHECKPOINT_INTERVAL,
                         help="Checkpoint interval (default: {}). "
                              "Use 0 to disable checkpointing".format(CHECKPOINT_INTERVAL))
-    parser.add_argument('--checkpoint-path', action='store', default='./',
-                        help="Path for saving checkpoint data (default: './')")
+    parser.add_argument('--checkpoint-path', action='store', default='./checkpoints',
+                        help="Path for saving checkpoint data (default: './checkpoints')")
     parser.add_argument('--report-interval', type=int, default=REPORT_INTERVAL,
                         help="Reporting interval")
     # 修改 parser.add_argument 部分：
