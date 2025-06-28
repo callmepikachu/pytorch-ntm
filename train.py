@@ -24,6 +24,7 @@ LOGGER = logging.getLogger(__name__)
 from tasks.copytask import CopyTaskModelTraining, CopyTaskParams
 from tasks.repeatcopytask import RepeatCopyTaskModelTraining, RepeatCopyTaskParams
 from tasks.DualCopyTask import DualCopyTaskModelTraining, DualCopyTaskParams
+from tasks.CDCLNLITask import CDCLNLITaskModelTraining, CDCLNLITaskParams
 
 LOGGER = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ TASKS = {
 
 DUAL_TASKS = {
     'copy': (DualCopyTaskModelTraining, DualCopyTaskParams),
+    'cdcl-nli': (CDCLNLITaskModelTraining, CDCLNLITaskParams),
 }
 
 # Default values for program arguments
@@ -169,6 +171,17 @@ def evaluate(net, criterion, X, Y):
 
 
 def train_model(model, args):
+    # 检查是否是 CDCL-NLI 任务
+    if hasattr(model, 'train_dataloader') and hasattr(model, 'dev_dataloader'):
+        # CDCL-NLI 任务使用 epoch 训练
+        train_cdcl_nli_model(model, args)
+    else:
+        # 原有的 batch 训练逻辑
+        train_batch_model(model, args)
+
+
+def train_batch_model(model, args):
+    """原有的 batch 训练逻辑"""
     num_batches = model.params.num_batches
     batch_size = model.params.batch_size
 
@@ -207,10 +220,64 @@ def train_model(model, args):
     LOGGER.info("Done training.")
 
 
+def train_cdcl_nli_model(model, args):
+    """CDCL-NLI 任务的 epoch 训练逻辑"""
+    from tasks.CDCLNLITask import train_cdcl_nli_batch, evaluate_cdcl_nli
+    
+    num_epochs = model.params.num_epochs
+    batch_size = model.params.batch_size
+
+    LOGGER.info("Training CDCL-NLI model for %d epochs (batch_size=%d)...",
+                num_epochs, batch_size)
+
+    for epoch in range(num_epochs):
+        model.net.train()
+        total_loss = 0
+        total_accuracy = 0
+        num_batches = 0
+        start_ms = get_ms()
+
+        for batch_idx, batch in enumerate(model.train_dataloader):
+            loss, accuracy = train_cdcl_nli_batch(model, batch)
+            total_loss += loss
+            total_accuracy += accuracy
+            num_batches += 1
+
+            # Update progress bar
+            progress_bar(batch_idx + 1, args.report_interval, loss)
+
+            # Report
+            if (batch_idx + 1) % args.report_interval == 0:
+                mean_loss = total_loss / num_batches
+                mean_accuracy = total_accuracy / num_batches
+                mean_time = int(((get_ms() - start_ms) / args.report_interval) / batch_size)
+                progress_clean()
+                LOGGER.info("Epoch %d, Batch %d Loss: %.6f Accuracy: %.4f Time: %d ms/batch",
+                            epoch + 1, batch_idx + 1, mean_loss, mean_accuracy, mean_time)
+                start_ms = get_ms()
+
+        # Epoch summary
+        epoch_loss = total_loss / num_batches
+        epoch_accuracy = total_accuracy / num_batches
+        
+        # Evaluate on dev set
+        dev_loss, dev_accuracy = evaluate_cdcl_nli(model, model.dev_dataloader)
+        
+        LOGGER.info("Epoch %d/%d - Train Loss: %.6f, Train Acc: %.4f, Dev Loss: %.6f, Dev Acc: %.4f",
+                    epoch + 1, num_epochs, epoch_loss, epoch_accuracy, dev_loss, dev_accuracy)
+
+        # Checkpoint
+        if (args.checkpoint_interval != 0) and ((epoch + 1) % args.checkpoint_interval == 0):
+            save_checkpoint(model.net, model.params.name, args,
+                            epoch + 1, [epoch_loss], [epoch_accuracy], [num_batches])
+
+    LOGGER.info("Done training.")
+
+
 def init_arguments():
     parser = argparse.ArgumentParser(prog='train.py')
     parser.add_argument('--seed', type=int, default=RANDOM_SEED, help="Seed value for RNGs")
-    parser.add_argument('--task', action='store', choices=list(TASKS.keys()), default='copy',
+    parser.add_argument('--task', action='store', choices=list(TASKS.keys()) + list(DUAL_TASKS.keys()), default='copy',
                         help="Choose the task to train (default: copy)")
     parser.add_argument('-p', '--param', action='append', default=[],
                         help='Override model params. Example: "-pbatch_size=4 -pnum_heads=2"')
@@ -221,9 +288,14 @@ def init_arguments():
                         help="Path for saving checkpoint data (default: './checkpoints')")
     parser.add_argument('--report-interval', type=int, default=REPORT_INTERVAL,
                         help="Reporting interval")
-    # 修改 parser.add_argument 部分：
-    parser.add_argument('--model_type', choices=['ntm', 'dual'], default='ntm',
+    parser.add_argument('--model-type', choices=['ntm', 'dual'], default='ntm',
                         help="Choose model type: ntm or dual-memory")
+    parser.add_argument('--num-batches', type=int, default=None,
+                        help="Override number of batches to train")
+    parser.add_argument('--batch-size', type=int, default=None,
+                        help="Override batch size")
+    parser.add_argument('--long-term-memory-backend', choices=['in-memory', 'neo4j'], default='in-memory',
+                        help="Choose long-term memory backend: in-memory or neo4j")
 
     argcomplete.autocomplete(parser)
 
@@ -268,11 +340,40 @@ def init_model(args):
         raise ValueError(f"Unknown model_type: {args.model_type}")
 
     params = params_cls()
+    
+    # 如果指定了 num_batches，覆盖默认值
+    if args.num_batches is not None:
+        params = attr.evolve(params, num_batches=args.num_batches)
+    
+    # 如果指定了 batch_size，覆盖默认值
+    if args.batch_size is not None:
+        params = attr.evolve(params, batch_size=args.batch_size)
+    
     params = update_model_params(params, args.param)
 
     LOGGER.info(params)
 
-    model = model_cls(params=params)
+    # 对于双重记忆模型，传递long_term_memory_backend参数
+    if args.model_type == 'dual':
+        # 从环境变量获取Neo4j配置
+        neo4j_config = None
+        if args.long_term_memory_backend == "neo4j":
+            import os
+            neo4j_config = {
+                "uri": os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+                "user": os.getenv("NEO4J_USER", "neo4j"),
+                "password": os.getenv("NEO4J_PASSWORD", "password123")
+            }
+            LOGGER.info("Using Neo4j backend with config: %s", neo4j_config)
+        
+        model = model_cls(
+            params=params,
+            long_term_memory_backend=args.long_term_memory_backend,
+            neo4j_config=neo4j_config
+        )
+    else:
+        model = model_cls(params=params)
+    
     return model
 
 
@@ -293,7 +394,12 @@ def main():
     # Initialize the model
     model = init_model(args)
 
-    LOGGER.info("Total number of parameters: %d", model.net.calculate_num_params())
+    # 计算总参数数量（包括投影层）
+    total_params = model.net.calculate_num_params()
+    if hasattr(model, 'projection_layer'):
+        total_params += sum(p.numel() for p in model.projection_layer.parameters())
+    
+    LOGGER.info("Total number of parameters: %d", total_params)
     train_model(model, args)
 
 

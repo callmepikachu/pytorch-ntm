@@ -1,0 +1,53 @@
+[
+  {
+    "premise": [
+      {
+        "text": "All triangles have three sides. This shape has three sides.",
+        "language": "en"
+      },
+      {
+        "text": "Todos los triángulos tienen tres lados. Esta forma tiene tres lados.",
+        "language": "es"
+      }
+    ],
+    "hypothesis": {
+      "text": "This shape is a triangle.",
+      "language": "en"
+    },
+    "label": "neutral"
+  },
+  {
+    "premise": [
+      {
+        "text": "If you study hard, you will pass. You passed the exam.",
+        "language": "en"
+      },
+      {
+        "text": "Si estudias duro, aprobarás. Aprobaste el examen.",
+        "language": "es"
+      }
+    ],
+    "hypothesis": {
+      "text": "You must have studied hard.",
+      "language": "en"
+    },
+    "label": "neutral"
+  },
+  {
+    "premise": [
+      {
+        "text": "No fish can breathe air. Dolphins are fish.",
+        "language": "en"
+      },
+      {
+        "text": "Ningún pez puede respirar aire. Los delfines son peces.",
+        "language": "es"
+      }
+    ],
+    "hypothesis": {
+      "text": "Dolphins cannot breathe air.",
+      "language": "en"
+    },
+    "label": "entailment"
+  }
+] 

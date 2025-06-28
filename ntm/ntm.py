@@ -4,8 +4,8 @@ from torch import nn
 import torch.nn.functional as F
 
 from ntm.dual_controller import DualMemoryController
-from ntm.long_term_memory import LongTermMemory
 from ntm.memory import NTMMemory
+from ntm.long_term_memory import InMemoryGraphMemory, Neo4jGraphMemory
 
 
 class NTM(nn.Module):
@@ -103,7 +103,10 @@ class NTM(nn.Module):
 
 class DualMemoryNTM(nn.Module):
     def __init__(self, input_size, output_size, controller_size,
-                 short_term_memory, long_term_memory):
+                 short_term_memory, long_term_memory,
+                 long_term_memory_backend="in-memory",
+                 neo4j_config=None,
+                 encoder=None, decoder=None):
         """
         Args:
             input_size: int - 输入维度
@@ -111,20 +114,36 @@ class DualMemoryNTM(nn.Module):
             controller_size: int - 控制器隐藏层大小
             short_term_memory: tuple(N, M) - 短期记忆矩阵大小
             long_term_memory: tuple(num_nodes, node_dim) - 长期记忆图结构大小
+            long_term_memory_backend: str - "in-memory" 或 "neo4j"
+            neo4j_config: dict - 连接 Neo4j 所需参数（uri, user, password）
+            encoder/decoder: 命题向量与文本的互转函数
         """
         super(DualMemoryNTM, self).__init__()
         self.input_size = input_size
         self.output_size = output_size
         self.controller_size = controller_size
 
-        # 初始化两个 memory 模块
         st_n, st_m = short_term_memory
         lt_nodes, lt_dim = long_term_memory
 
         self.short_term = NTMMemory(st_n, st_m)
-        self.long_term = LongTermMemory(lt_nodes, lt_dim)
 
-        # 初始化控制器
+        if long_term_memory_backend == "in-memory":
+            self.long_term = InMemoryGraphMemory(lt_nodes, lt_dim)
+        elif long_term_memory_backend == "neo4j":
+            if neo4j_config is None:
+                raise ValueError("neo4j_config 必须提供 uri, user, password")
+            self.long_term = Neo4jGraphMemory(
+                uri=neo4j_config["uri"],
+                user=neo4j_config["user"],
+                password=neo4j_config["password"],
+                node_dim=lt_dim,
+                encoder=encoder,
+                decoder=decoder
+            )
+        else:
+            raise ValueError(f"未知 long_term_memory_backend: {long_term_memory_backend}")
+
         self.controller = DualMemoryController(
             input_size=input_size,
             hidden_size=controller_size,
@@ -134,8 +153,6 @@ class DualMemoryNTM(nn.Module):
             long_term_nodes=lt_nodes,
             long_term_dim=lt_dim
         )
-
-        # Track previous long-term write weights
         self._prev_w_lt = None
 
     def forward(self, input_seq):

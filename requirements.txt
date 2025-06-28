@@ -2,4 +2,6 @@ argcomplete
 attrs
 numpy
 pytest
+neo4j
+transformers
 

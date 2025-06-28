@@ -114,9 +114,23 @@ class DualCopyTaskModelTraining:
     dataloader = attrib()
     criterion = attrib()
     optimizer = attrib()
+    long_term_memory_backend = attrib(default="in-memory")
+    neo4j_config = attrib(default=None)
 
     @net.default
     def default_net(self):
+        # 确保long_term_memory_backend有默认值
+        backend = getattr(self, 'long_term_memory_backend', 'in-memory')
+        
+        # 从环境变量获取Neo4j配置（如果未提供）
+        if backend == "neo4j" and getattr(self, 'neo4j_config', None) is None:
+            import os
+            self.neo4j_config = {
+                "uri": os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+                "user": os.getenv("NEO4J_USER", "neo4j"),
+                "password": os.getenv("NEO4J_PASSWORD", "password123")
+            }
+        
         return EncapsulatedDualMemoryNTM(
             input_size=self.params.sequence_width + 1,
             output_size=self.params.sequence_width,
@@ -124,7 +138,9 @@ class DualCopyTaskModelTraining:
             controller_layers=self.params.controller_layers,
             num_heads=self.params.num_heads,
             short_term_memory=(self.params.short_term_n, self.params.short_term_m),
-            long_term_memory=(self.params.long_term_nodes, self.params.long_term_dim)
+            long_term_memory=(self.params.long_term_nodes, self.params.long_term_dim),
+            long_term_memory_backend=backend,
+            neo4j_config=getattr(self, 'neo4j_config', None)
         )
 
     @dataloader.default

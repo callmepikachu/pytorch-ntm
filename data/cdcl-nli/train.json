@@ -1,0 +1,87 @@
+[
+  {
+    "premise": [
+      {
+        "text": "A implies B, and B implies C. A is true.",
+        "language": "en"
+      },
+      {
+        "text": "A implica B, y B implica C. A es verdadero.",
+        "language": "es"
+      }
+    ],
+    "hypothesis": {
+      "text": "C is true.",
+      "language": "en"
+    },
+    "label": "entailment"
+  },
+  {
+    "premise": [
+      {
+        "text": "X is greater than Y, and Y is greater than Z. Z is positive.",
+        "language": "en"
+      },
+      {
+        "text": "X es mayor que Y, y Y es mayor que Z. Z es positivo.",
+        "language": "es"
+      }
+    ],
+    "hypothesis": {
+      "text": "X is greater than Z.",
+      "language": "en"
+    },
+    "label": "entailment"
+  },
+  {
+    "premise": [
+      {
+        "text": "Either A or B is true. A is false.",
+        "language": "en"
+      },
+      {
+        "text": "O A o B es verdadero. A es falso.",
+        "language": "es"
+      }
+    ],
+    "hypothesis": {
+      "text": "B must be true.",
+      "language": "en"
+    },
+    "label": "entailment"
+  },
+  {
+    "premise": [
+      {
+        "text": "All students passed the exam. John is a student.",
+        "language": "en"
+      },
+      {
+        "text": "Todos los estudiantes aprobaron el examen. John es estudiante.",
+        "language": "es"
+      }
+    ],
+    "hypothesis": {
+      "text": "Some students failed the exam.",
+      "language": "en"
+    },
+    "label": "contradiction"
+  },
+  {
+    "premise": [
+      {
+        "text": "The door is either open or closed. The door is not open.",
+        "language": "en"
+      },
+      {
+        "text": "La puerta está abierta o cerrada. La puerta no está abierta.",
+        "language": "es"
+      }
+    ],
+    "hypothesis": {
+      "text": "The door is closed.",
+      "language": "en"
+    },
+    "label": "entailment"
+  }
+] 

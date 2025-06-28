@@ -68,7 +68,8 @@ class EncapsulatedNTM(nn.Module):
 
 class EncapsulatedDualMemoryNTM(nn.Module):  # 继承 nn.Module
     def __init__(self, input_size, output_size, controller_size, controller_layers, num_heads,
-                 short_term_memory, long_term_memory):
+                 short_term_memory, long_term_memory, long_term_memory_backend="in-memory", 
+                 neo4j_config=None, encoder=None, decoder=None):
         super(EncapsulatedDualMemoryNTM, self).__init__()
 
         # Store parameters
@@ -81,7 +82,11 @@ class EncapsulatedDualMemoryNTM(nn.Module):  # 继承 nn.Module
             output_size=output_size,
             controller_size=controller_size,
             short_term_memory=short_term_memory,
-            long_term_memory=long_term_memory
+            long_term_memory=long_term_memory,
+            long_term_memory_backend=long_term_memory_backend,
+            neo4j_config=neo4j_config,
+            encoder=encoder,
+            decoder=decoder
         )
 
         # State tracking for the two-phase forward pattern
